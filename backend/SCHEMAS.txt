@@ -1,0 +1,59 @@
+SCHEMAS
+USER:
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  first_name VARCHAR(255) NOT NULL,
+  middle_name VARCHAR(255) NULL,
+  last_name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  address VARCHAR(255),
+  age INT,
+  gender ENUM('Male', 'Female', 'Other'),
+  date_of_birth DATE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL DEFAULT NULL, -- for soft deletion
+  is_admin BOOLEAN DEFAULT FALSE -- to differentiate between users and admins
+);
+
+Health Data:
+CREATE TABLE health_data (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT,
+  height DECIMAL(5, 2), -- height in cm
+  weight DECIMAL(5, 2), -- weight in kg
+  blood_pressure_systolic INT,  -- systolic BP
+  blood_pressure_diastolic INT, -- diastolic BP
+  blood_sugar DECIMAL(5, 2),  -- fasting blood sugar in mg/dl
+  bmi DECIMAL(5, 2), -- body mass index
+  heart_rate INT, -- heart rate in bpm
+  cholesterol DECIMAL(5, 2), -- cholesterol level
+  recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL DEFAULT NULL, -- for soft deletion
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+Feedback Table:
+
+CREATE TABLE feedback (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT,
+  message TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL DEFAULT NULL, -- for soft deletion
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+Admin Table:
+
+CREATE TABLE admins (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  deleted_at TIMESTAMP NULL DEFAULT NULL -- for soft deletion
+);
