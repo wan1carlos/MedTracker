@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Container, Typography, Grid, Paper, Button, Dialog, DialogTitle, 
   DialogContent, TextField, DialogActions, IconButton, Alert, Snackbar,
-  Box, Divider, Chip, Tooltip
+  Box, Divider, Chip, Tooltip, List, ListItem, ListItemText, Collapse, ListItemIcon, ListItemButton
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import FavoriteIcon from '@mui/icons-material/Favorite';
@@ -19,6 +19,13 @@ import { calculateAge } from '../utils/dateUtils';
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 import AddIcon from '@mui/icons-material/Add';
+import { 
+  getHemoglobinCategory, getRBCCategory, 
+  getWBCCategory, getPlateletCategory 
+} from '../utils/healthUtils';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 
 const Dashboard = () => {
   const [healthData, setHealthData] = useState([]);
@@ -32,8 +39,13 @@ const Dashboard = () => {
     blood_pressure_diastolic: '',
     blood_sugar: '',
     heart_rate: '',
-    cholesterol: ''
+    cholesterol: '',
+    hemoglobin: '',
+    rbc: '',
+    wbc: '',
+    platelet_count: ''
   });
+  const [expandedRecord, setExpandedRecord] = useState(null);
 
   useEffect(() => {
     fetchHealthData();
@@ -72,7 +84,11 @@ const Dashboard = () => {
         blood_pressure_diastolic: '',
         blood_sugar: '',
         heart_rate: '',
-        cholesterol: ''
+        cholesterol: '',
+        hemoglobin: '',
+        rbc: '',
+        wbc: '',
+        platelet_count: ''
       });
       showSnackbar('Health record added successfully', 'success');
     } catch (error) {
@@ -237,17 +253,44 @@ const Dashboard = () => {
 
     const latest = healthData[0];
     const previous = healthData[1];
-    
+
     const calculateChange = (current, previous) => {
       const change = ((current - previous) / previous) * 100;
       return change.toFixed(1);
     };
 
-    const MetricCard = ({ title, value, unit, previousValue, inverse, isBloodPressure }) => {
+    const isValueAbnormal = (value, type, gender) => {
+      switch (type) {
+        case 'BMI':
+          return value < 18.5 || value > 24.9;
+        case 'Blood Pressure':
+          const [systolic] = value.split('/').map(Number);
+          return systolic > 120;
+        case 'Blood Sugar':
+          return value < 70 || value > 100;
+        case 'Cholesterol':
+          return value > 200;
+        case 'Hemoglobin':
+          return gender === 'Male' 
+            ? (value < 13.5 || value > 17.5)
+            : (value < 12.0 || value > 15.5);
+        case 'RBC Count':
+          return gender === 'Male'
+            ? (value < 4.5 || value > 5.9)
+            : (value < 4.0 || value > 5.2);
+        case 'WBC Count':
+          return value < 4000 || value > 11000;
+        case 'Platelet Count':
+          return value < 150000 || value > 450000;
+        default:
+          return false;
+      }
+    };
+
+    const MetricCard = ({ title, value, unit, previousValue, isBloodPressure }) => {
       let change, isIncrease;
 
       if (isBloodPressure) {
-        // For blood pressure, compare systolic values
         const [currentSystolic] = value.split('/').map(Number);
         const [previousSystolic] = previousValue.split('/').map(Number);
         change = ((currentSystolic - previousSystolic) / previousSystolic * 100).toFixed(1);
@@ -257,8 +300,12 @@ const Dashboard = () => {
         isIncrease = value > previousValue;
       }
 
-      // For some metrics like blood pressure, an increase is bad (inverse logic)
-      const showRedForIncrease = inverse ? isIncrease : !isIncrease;
+      // Only show red if the current value is outside normal range
+      const isCurrentAbnormal = isValueAbnormal(
+        isBloodPressure ? value.split('/')[0] : value,
+        title,
+        userDetails?.gender
+      );
 
       // Define darker colors for better visibility
       const colors = {
@@ -269,7 +316,19 @@ const Dashboard = () => {
         bad: {
           text: '#D32F2F', // darker red
           bg: 'rgba(211, 47, 47, 0.15)' // semi-transparent dark red
+        },
+        neutral: {
+          text: '#1976D2', // blue
+          bg: 'rgba(25, 118, 210, 0.15)' // semi-transparent blue
         }
+      };
+
+      // Determine color based on both change direction and abnormality
+      const getChangeColors = () => {
+        if (isCurrentAbnormal) {
+          return colors.bad;
+        }
+        return colors.good;
       };
 
       return (
@@ -288,13 +347,13 @@ const Dashboard = () => {
             </Typography>
             {value !== previousValue && (
               <Tooltip title={`${Math.abs(change)}% ${isIncrease ? 'increase' : 'decrease'} from previous record. ${
-                showRedForIncrease ? 'This change may need attention.' : 'This is a positive change.'
+                isCurrentAbnormal ? 'Current value is outside normal range.' : 'Value is within normal range.'
               }`}>
                 <Box sx={{ 
                   display: 'flex', 
                   alignItems: 'center',
-                  color: showRedForIncrease ? colors.bad.text : colors.good.text,
-                  bgcolor: showRedForIncrease ? colors.bad.bg : colors.good.bg,
+                  color: getChangeColors().text,
+                  bgcolor: getChangeColors().bg,
                   px: 1,
                   py: 0.5,
                   borderRadius: 1,
@@ -339,13 +398,14 @@ const Dashboard = () => {
         }}>
           <TimelineIcon /> Health Trends Analysis
         </Typography>
-        <Grid container spacing={2}>
+        <Grid container spacing={3}>
+          {/* Main metrics - always show these in the first row */}
           <Grid item xs={12} sm={6} md={3}>
             <MetricCard
               title="BMI"
               value={latest.bmi}
               previousValue={previous.bmi}
-              inverse={true}
+              isBloodPressure={false}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
@@ -353,18 +413,8 @@ const Dashboard = () => {
               title="Blood Pressure"
               value={`${latest.blood_pressure_systolic}/${latest.blood_pressure_diastolic}`}
               previousValue={`${previous.blood_pressure_systolic}/${previous.blood_pressure_diastolic}`}
-              inverse={true}
               isBloodPressure={true}
               unit="mmHg"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <MetricCard
-              title="Weight"
-              value={latest.weight}
-              unit="kg"
-              previousValue={previous.weight}
-              inverse={true}
             />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
@@ -373,9 +423,75 @@ const Dashboard = () => {
               value={latest.blood_sugar}
               unit="mg/dL"
               previousValue={previous.blood_sugar}
-              inverse={true}
+              isBloodPressure={false}
             />
           </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <MetricCard
+              title="Cholesterol"
+              value={latest.cholesterol}
+              unit="mg/dL"
+              previousValue={previous.cholesterol}
+              isBloodPressure={false}
+            />
+          </Grid>
+
+          {/* Blood test parameters - show in second row if they exist */}
+          {(latest.hemoglobin || latest.rbc || latest.wbc || latest.platelet_count) && (
+            <>
+              <Grid item xs={12}>
+                <Divider sx={{ borderColor: 'rgba(255, 255, 255, 0.12)', my: 2 }} />
+                <Typography variant="subtitle1" sx={{ mb: 2 }}>
+                  Blood Test Results
+                </Typography>
+              </Grid>
+
+              {latest.hemoglobin && previous.hemoglobin && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <MetricCard
+                    title="Hemoglobin"
+                    value={latest.hemoglobin}
+                    unit="g/dL"
+                    previousValue={previous.hemoglobin}
+                    isBloodPressure={false}
+                  />
+                </Grid>
+              )}
+              {latest.rbc && previous.rbc && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <MetricCard
+                    title="RBC Count"
+                    value={latest.rbc}
+                    unit="million/μL"
+                    previousValue={previous.rbc}
+                    isBloodPressure={false}
+                  />
+                </Grid>
+              )}
+              {latest.wbc && previous.wbc && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <MetricCard
+                    title="WBC Count"
+                    value={latest.wbc}
+                    unit="per μL"
+                    previousValue={previous.wbc}
+                    isBloodPressure={false}
+                  />
+                </Grid>
+              )}
+              {latest.platelet_count && previous.platelet_count && (
+                <Grid item xs={12} sm={6} md={3}>
+                  <MetricCard
+                    title="Platelet Count"
+                    value={latest.platelet_count}
+                    unit="per μL"
+                    previousValue={previous.platelet_count}
+                    isBloodPressure={false}
+                  />
+                </Grid>
+              )}
+            </>
+          )}
         </Grid>
       </Paper>
     );
@@ -383,95 +499,153 @@ const Dashboard = () => {
 
   const handlePrintRecord = async (record) => {
     try {
-      // Fetch fresh user data from the database
       const userData = await getUserDetails();
-      
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
       
-      // Header
-      doc.setFontSize(20);
-      doc.text("Medical Record", pageWidth/2, 20, { align: 'center' });
-      
-      // Date
-      doc.setFontSize(12);
-      doc.text(`Date: ${new Date(record.recorded_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}`, 20, 35);
+      // Add header with logo and clinic info
+      doc.setFillColor(33, 150, 243); // Primary blue color
+      doc.rect(0, 0, pageWidth, 30, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.text("MedTracker", pageWidth/2, 20, { align: 'center' });
 
-      // Patient Information
-      doc.setFontSize(14);
-      doc.text("Patient Information", 20, 50);
-      doc.setFontSize(12);
+      // Reset text color to black
+      doc.setTextColor(0, 0, 0);
       
-      const dob = userData.date_of_birth ? 
-        new Date(userData.date_of_birth).toLocaleDateString() : 
-        'Not provided';
-      
-      const age = userData.date_of_birth ? calculateAge(userData.date_of_birth) : 'N/A';
-      
+      // Add lab info
+      doc.setFontSize(10);
       doc.text([
-        `Name: ${userData.first_name} ${userData.middle_name ? userData.middle_name + ' ' : ''}${userData.last_name}`,
-        `Date of Birth: ${dob}`,
-        `Age: ${age} years`,
-        `Gender: ${userData.gender || 'Not provided'}`,
-        `Email: ${userData.email}`,
-        `Address: ${userData.address || 'Not provided'}`
-      ], 20, 60);
+        "123 Medical Center Drive",
+        "Healthcare City, HC 12345",
+        "Tel: (555) 123-4567",
+        "Email: lab@medtracker.com"
+      ], 15, 40);
 
-      // Vital Signs
-      doc.setFontSize(14);
-      doc.text("Vital Signs", 20, 100);
+      // Add report info box
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(245, 245, 245);
+      doc.rect(pageWidth - 80, 35, 65, 30, 'FD');
+      doc.text([
+        "Report ID: " + record.id,
+        "Date: " + new Date(record.created_at).toLocaleDateString(),
+        "Time: " + new Date(record.created_at).toLocaleTimeString()
+      ], pageWidth - 75, 42);
+
+      // Patient Information section
+      doc.setFillColor(240, 240, 240);
+      doc.rect(15, 75, pageWidth - 30, 35, 'F');
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text("Patient Information", 20, 85);
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(10);
       
-      const vitalSigns = [
-        ['Measurement', 'Value', 'Status'],
-        ['BMI', calculateBMI(record.height, record.weight), 
-          getBMICategory(calculateBMI(record.height, record.weight), userData.date_of_birth).label],
-        ['Blood Pressure', `${record.blood_pressure_systolic}/${record.blood_pressure_diastolic} mmHg`,
-          getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic, userData.date_of_birth).label],
-        ['Heart Rate', `${record.heart_rate} bpm`,
-          getHeartRateCategory(record.heart_rate, userData.date_of_birth).label],
-        ['Blood Sugar', `${record.blood_sugar} mg/dL`,
-          getBloodSugarCategory(record.blood_sugar, userData.date_of_birth).label],
-        ['Cholesterol', `${record.cholesterol} mg/dL`,
-          getCholesterolCategory(record.cholesterol, userData.date_of_birth).label],
-        ['Height', `${record.height} cm`, ''],
-        ['Weight', `${record.weight} kg`, '']
+      const patientInfo = [
+        `Name: ${userData.first_name} ${userData.middle_name || ''} ${userData.last_name}`,
+        `Gender: ${userData.gender || 'Not specified'}`,
+        `Date of Birth: ${new Date(userData.date_of_birth).toLocaleDateString()}`,
+        `Age: ${calculateAge(userData.date_of_birth)} years`
       ];
+      doc.text(patientInfo, 20, 95);
+
+      // Test Results
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text("Test Results", 20, 125);
+      doc.setFont(undefined, 'normal');
+
+      // Create test results table
+      const testResults = [
+        ['Test', 'Result', 'Status', 'Reference Range'],
+        ['Basic Measurements', '', '', ''],
+        ['Height', `${record.height} cm`, '-', '-'],
+        ['Weight', `${record.weight} kg`, '-', '-'],
+        ['BMI', calculateBMI(record.height, record.weight), 
+          getBMICategory(calculateBMI(record.height, record.weight), userData.date_of_birth).label,
+          '18.5 - 24.9'],
+        ['Vital Signs', '', '', ''],
+        ['Blood Pressure', `${record.blood_pressure_systolic}/${record.blood_pressure_diastolic} mmHg`,
+          getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic, userData.date_of_birth).label,
+          '< 120/80 mmHg'],
+        ['Heart Rate', `${record.heart_rate} bpm`,
+          getHeartRateCategory(record.heart_rate, userData.date_of_birth).label,
+          '60 - 100 bpm'],
+        ['Blood Chemistry', '', '', ''],
+        ['Blood Sugar', `${record.blood_sugar} mg/dL`,
+          getBloodSugarCategory(record.blood_sugar, userData.date_of_birth).label,
+          '70 - 100 mg/dL (Fasting)'],
+        ['Cholesterol', `${record.cholesterol} mg/dL`,
+          getCholesterolCategory(record.cholesterol, userData.date_of_birth).label,
+          '< 200 mg/dL'],
+        ['Complete Blood Count', '', '', ''],
+        record.hemoglobin ? ['Hemoglobin', `${record.hemoglobin} g/dL`,
+          getHemoglobinCategory(record.hemoglobin, userData.gender).label,
+          userData.gender === 'Male' ? '13.5 - 17.5 g/dL' : '12.0 - 15.5 g/dL'] : null,
+        record.rbc ? ['RBC Count', `${record.rbc} million/μL`,
+          getRBCCategory(record.rbc, userData.gender).label,
+          userData.gender === 'Male' ? '4.5 - 5.9 million/μL' : '4.0 - 5.2 million/μL'] : null,
+        record.wbc ? ['WBC Count', `${record.wbc.toLocaleString()} per μL`,
+          getWBCCategory(record.wbc).label,
+          '4,000 - 11,000 per μL'] : null,
+        record.platelet_count ? ['Platelet Count', `${record.platelet_count.toLocaleString()} per μL`,
+          getPlateletCategory(record.platelet_count).label,
+          '150,000 - 450,000 per μL'] : null
+      ].filter(Boolean);
 
       doc.autoTable({
-        startY: 110,
-        head: [vitalSigns[0]],
-        body: vitalSigns.slice(1),
+        startY: 130,
+        head: [testResults[0]],
+        body: testResults.slice(1),
         theme: 'grid',
         styles: {
-          fontSize: 12,
-          cellPadding: 5
+          fontSize: 9,
+          cellPadding: 4
         },
         headStyles: {
-          fillColor: [66, 66, 66]
+          fillColor: [33, 150, 243],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold'
+        },
+        columnStyles: {
+          0: { cellWidth: 45 },
+          1: { cellWidth: 45 },
+          2: { cellWidth: 35 },
+          3: { cellWidth: 'auto' }
+        },
+        // Style for section headers
+        rowStyles: row => {
+          if (['Basic Measurements', 'Vital Signs', 'Blood Chemistry', 'Complete Blood Count'].includes(testResults[row + 1]?.[0])) {
+            return {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold'
+            };
+          }
         }
       });
 
-      // Notes section
-      doc.setFontSize(14);
-      doc.text("Notes", 20, doc.autoTable.previous.finalY + 20);
-      doc.setFontSize(12);
+      // Add notes and disclaimer
+      const finalY = doc.autoTable.previous.finalY + 20;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.text("Notes and Interpretation:", 20, finalY);
+      doc.setFont(undefined, 'normal');
       doc.text([
-        "This record was generated automatically from the MedTracker system.",
-        "Please consult with a healthcare professional for interpretation of these results."
-      ], 20, doc.autoTable.previous.finalY + 30);
+        "• Results should be interpreted in conjunction with clinical findings and other laboratory data.",
+        "• Reference ranges may vary by laboratory and patient characteristics.",
+        "• Values marked as abnormal should be reviewed by a healthcare provider."
+      ], 25, finalY + 10);
 
-      // Footer
-      doc.setFontSize(10);
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 280);
-      doc.text("MedTracker Health Records System", pageWidth/2, 280, { align: 'center' });
-      doc.text("Page 1 of 1", pageWidth - 20, 280, { align: 'right' });
+      // Add footer
+      doc.setFontSize(8);
+      doc.text("Generated by MedTracker Laboratory System", 20, pageHeight - 20);
+      doc.text(`Report generated on: ${new Date().toLocaleString()}`, pageWidth - 20, pageHeight - 20, { align: 'right' });
+      doc.text("Page 1 of 1", pageWidth/2, pageHeight - 20, { align: 'center' });
 
       // Save the PDF
-      doc.save(`medical_record_${new Date(record.recorded_at).toISOString().split('T')[0]}.pdf`);
+      doc.save(`lab_report_${new Date(record.created_at).toISOString().split('T')[0]}.pdf`);
     } catch (error) {
       showSnackbar('Error generating PDF', 'error');
     }
@@ -523,219 +697,285 @@ const Dashboard = () => {
           </Button>
         </Paper>
       ) : (
-        <Grid container spacing={3}>
-          {healthData.map((record, index) => (
-            <Grid item xs={12} md={6} key={record.id || index}>
-              <Paper 
-                elevation={3} 
+        <List sx={{ width: '100%', bgcolor: 'background.paper' }}>
+          {healthData.map((record) => (
+            <React.Fragment key={record.id}>
+              <ListItem 
+                disablePadding
                 sx={{ 
-                  p: 3, 
-                  position: 'relative',
+                  mb: 1,
+                  bgcolor: 'background.paper',
                   borderRadius: 2,
-                  transition: 'transform 0.2s ease-in-out',
-                  '&:hover': {
-                    transform: 'translateY(-4px)'
-                  }
+                  boxShadow: 1
                 }}
-              >
-                {/* Header */}
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                  <Typography variant="h6" color="primary">
-                    {new Date(record.recorded_at).toLocaleDateString('en-US', {
-                      year: 'numeric',
-                      month: 'long',
-                      day: 'numeric'
-                    })}
-                  </Typography>
-                  <Box>
-                    <Tooltip title="Save as PDF">
-                      <IconButton 
-                        onClick={() => handlePrintRecord(record)}
-                        sx={{ mr: 1 }}
-                        color="primary"
-                      >
-                        <PrintIcon />
-                      </IconButton>
-                    </Tooltip>
+                secondaryAction={
+                  <Box sx={{ display: 'flex', gap: 1, mr: 1 }}>
                     <IconButton 
-                      onClick={() => handleDeleteRecord(record.id)}
+                      edge="end" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handlePrintRecord(record);
+                      }}
+                      sx={{ color: 'primary.main' }}
+                    >
+                      <PrintIcon />
+                    </IconButton>
+                    <IconButton 
+                      edge="end" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteRecord(record.id);
+                      }}
                       sx={{ color: 'error.main' }}
                     >
                       <DeleteIcon />
                     </IconButton>
                   </Box>
-                </Box>
-                
-                <Divider sx={{ mb: 2 }} />
-
-                {/* Main Stats */}
-                <Grid container spacing={2}>
-                  {/* BMI Section */}
-                  <Grid item xs={12}>
-                    <Paper 
-                      variant="outlined" 
-                      sx={{ 
-                        p: 2, 
-                        bgcolor: 'background.default',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between'
-                      }}
-                    >
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box>
-                          <Typography variant="body2" color="textSecondary">BMI</Typography>
-                          <Typography variant="h6">{calculateBMI(record.height, record.weight)}</Typography>
-                        </Box>
+                }
+              >
+                <ListItemButton 
+                  onClick={() => setExpandedRecord(expandedRecord === record.id ? null : record.id)}
+                  sx={{ py: 2 }}
+                >
+                  <ListItemIcon>
+                    <HealthAndSafetyIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={
+                      <Typography variant="subtitle1" sx={{ fontWeight: 'medium' }}>
+                        {new Date(record.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </Typography>
+                    }
+                    secondary={
+                      <Box sx={{ display: 'flex', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+                        <Chip
+                          size="small"
+                          label={`BMI: ${record.bmi}`}
+                          sx={{ 
+                            bgcolor: getBMICategory(record.bmi, userDetails?.date_of_birth).color + '20',
+                            color: getBMICategory(record.bmi, userDetails?.date_of_birth).color,
+                            fontWeight: 'medium'
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`BP: ${record.blood_pressure_systolic}/${record.blood_pressure_diastolic}`}
+                          sx={{ 
+                            bgcolor: getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic).color + '20',
+                            color: getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic).color,
+                            fontWeight: 'medium'
+                          }}
+                        />
+                        <Chip
+                          size="small"
+                          label={`Sugar: ${record.blood_sugar} mg/dL`}
+                          sx={{ 
+                            bgcolor: getBloodSugarCategory(record.blood_sugar).color + '20',
+                            color: getBloodSugarCategory(record.blood_sugar).color,
+                            fontWeight: 'medium'
+                          }}
+                        />
                       </Box>
-                      <Chip 
-                        label={getBMICategory(calculateBMI(record.height, record.weight), record.date_of_birth).label}
-                        size="small"
-                        sx={{ 
-                          bgcolor: getBMICategory(calculateBMI(record.height, record.weight), record.date_of_birth).color,
-                          color: 'white'
-                        }}
-                      />
-                    </Paper>
-                  </Grid>
-
-                  {/* Measurements */}
-                  <Grid item xs={6}>
-                    <Tooltip title="Height">
-                      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <HeightIcon color="primary" />
-                          <Box>
-                            <Typography variant="body2" color="textSecondary">Height</Typography>
+                    }
+                  />
+                  {expandedRecord === record.id ? <ExpandLess /> : <ExpandMore />}
+                </ListItemButton>
+              </ListItem>
+              <Collapse in={expandedRecord === record.id} timeout="auto" unmountOnExit>
+                <Box sx={{ p: 3, bgcolor: 'grey.50', mx: 1, mb: 1, borderRadius: 2 }}>
+                  <Grid container spacing={3}>
+                    {/* Basic Measurements */}
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle1" color="primary" gutterBottom sx={{ fontWeight: 'medium' }}>
+                        Basic Measurements
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <HeightIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">Height</Typography>
+                            </Box>
                             <Typography variant="h6">{record.height} cm</Typography>
-                          </Box>
-                        </Box>
-                      </Paper>
-                    </Tooltip>
-                  </Grid>
-
-                  <Grid item xs={6}>
-                    <Tooltip title="Weight">
-                      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <ScaleIcon color="primary" />
-                          <Box>
-                            <Typography variant="body2" color="textSecondary">Weight</Typography>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Reference: Age-specific
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <ScaleIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">Weight</Typography>
+                            </Box>
                             <Typography variant="h6">{record.weight} kg</Typography>
-                          </Box>
-                        </Box>
-                      </Paper>
-                    </Tooltip>
-                  </Grid>
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              Reference: BMI dependent
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <MonitorHeartIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">BMI</Typography>
+                            </Box>
+                            <Typography variant="h6">{record.bmi}</Typography>
+                            <Chip 
+                              size="small"
+                              label={getBMICategory(record.bmi, userDetails?.date_of_birth).label}
+                              sx={{ 
+                                mt: 1,
+                                bgcolor: getBMICategory(record.bmi, userDetails?.date_of_birth).color + '20',
+                                color: getBMICategory(record.bmi, userDetails?.date_of_birth).color
+                              }}
+                            />
+                          </Paper>
+                        </Grid>
+                      </Grid>
+                    </Grid>
 
-                  {/* Blood Pressure */}
-                  <Grid item xs={12}>
-                    <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <FavoriteIcon color="error" />
-                          <Box>
-                            <Typography variant="body2" color="textSecondary">Blood Pressure</Typography>
+                    {/* Vital Signs */}
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle1" color="primary" gutterBottom sx={{ fontWeight: 'medium' }}>
+                        Vital Signs
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <FavoriteIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">Blood Pressure</Typography>
+                            </Box>
                             <Typography variant="h6">
                               {record.blood_pressure_systolic}/{record.blood_pressure_diastolic} mmHg
                             </Typography>
-                          </Box>
-                        </Box>
-                        <Chip 
-                          label={getBloodPressureCategory(
-                            record.blood_pressure_systolic, 
-                            record.blood_pressure_diastolic,
-                            record.date_of_birth
-                          ).label}
-                          sx={{ 
-                            bgcolor: getBloodPressureCategory(
-                              record.blood_pressure_systolic, 
-                              record.blood_pressure_diastolic,
-                              record.date_of_birth
-                            ).color,
-                            color: 'white'
-                          }}
-                        />
-                      </Box>
-                    </Paper>
-                  </Grid>
-
-                  {/* Heart Rate */}
-                  <Grid item xs={6}>
-                    <Tooltip title="Heart Rate">
-                      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <MonitorHeartIcon color="primary" />
-                            <Box>
-                              <Typography variant="body2" color="textSecondary">Heart Rate</Typography>
-                              <Typography variant="h6">{record.heart_rate} bpm</Typography>
+                            <Chip 
+                              size="small"
+                              label={getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic).label}
+                              sx={{ 
+                                mt: 1,
+                                bgcolor: getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic).color + '20',
+                                color: getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic).color
+                              }}
+                            />
+                          </Paper>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                              <MonitorHeartIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">Heart Rate</Typography>
                             </Box>
-                          </Box>
-                          <Chip 
-                            label={getHeartRateCategory(record.heart_rate, record.date_of_birth).label}
-                            size="small"
-                            sx={{ 
-                              bgcolor: getHeartRateCategory(record.heart_rate, record.date_of_birth).color,
-                              color: 'white'
-                            }}
-                          />
-                        </Box>
-                      </Paper>
-                    </Tooltip>
-                  </Grid>
+                            <Typography variant="h6">{record.heart_rate} bpm</Typography>
+                          </Paper>
+                        </Grid>
+                      </Grid>
+                    </Grid>
 
-                  {/* Blood Sugar */}
-                  <Grid item xs={6}>
-                    <Tooltip title="Blood Sugar">
-                      <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <BloodtypeIcon color="primary" />
-                            <Box>
-                              <Typography variant="body2" color="textSecondary">Blood Sugar</Typography>
-                              <Typography variant="h6">{record.blood_sugar} mg/dL</Typography>
-                            </Box>
-                          </Box>
-                          <Chip 
-                            label={getBloodSugarCategory(record.blood_sugar, record.date_of_birth).label}
-                            size="small"
-                            sx={{ 
-                              bgcolor: getBloodSugarCategory(record.blood_sugar, record.date_of_birth).color,
-                              color: 'white'
-                            }}
-                          />
-                        </Box>
-                      </Paper>
-                    </Tooltip>
+                    {/* Blood Tests */}
+                    {(record.hemoglobin || record.rbc || record.wbc || record.platelet_count) && (
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle1" color="primary" gutterBottom sx={{ fontWeight: 'medium' }}>
+                          Blood Tests
+                        </Typography>
+                        <Grid container spacing={2}>
+                          {record.hemoglobin && (
+                            <Grid item xs={12} sm={6} md={3}>
+                              <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <BloodtypeIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                                  <Typography variant="body2" color="text.secondary">Hemoglobin</Typography>
+                                </Box>
+                                <Typography variant="h6">{record.hemoglobin} g/dL</Typography>
+                                <Chip 
+                                  size="small"
+                                  label={getHemoglobinCategory(record.hemoglobin, userDetails?.gender).label}
+                                  sx={{ 
+                                    mt: 1,
+                                    bgcolor: getHemoglobinCategory(record.hemoglobin, userDetails?.gender).color + '20',
+                                    color: getHemoglobinCategory(record.hemoglobin, userDetails?.gender).color
+                                  }}
+                                />
+                              </Paper>
+                            </Grid>
+                          )}
+                          {record.rbc && (
+                            <Grid item xs={12} sm={6} md={3}>
+                              <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <BloodtypeIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                                  <Typography variant="body2" color="text.secondary">RBC Count</Typography>
+                                </Box>
+                                <Typography variant="h6">{record.rbc} million/μL</Typography>
+                                <Chip 
+                                  size="small"
+                                  label={getRBCCategory(record.rbc, userDetails?.gender).label}
+                                  sx={{ 
+                                    mt: 1,
+                                    bgcolor: getRBCCategory(record.rbc, userDetails?.gender).color + '20',
+                                    color: getRBCCategory(record.rbc, userDetails?.gender).color
+                                  }}
+                                />
+                              </Paper>
+                            </Grid>
+                          )}
+                          {record.wbc && (
+                            <Grid item xs={12} sm={6} md={3}>
+                              <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <BloodtypeIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                                  <Typography variant="body2" color="text.secondary">WBC Count</Typography>
+                                </Box>
+                                <Typography variant="h6">{record.wbc.toLocaleString()} per μL</Typography>
+                                <Chip 
+                                  size="small"
+                                  label={getWBCCategory(record.wbc).label}
+                                  sx={{ 
+                                    mt: 1,
+                                    bgcolor: getWBCCategory(record.wbc).color + '20',
+                                    color: getWBCCategory(record.wbc).color
+                                  }}
+                                />
+                              </Paper>
+                            </Grid>
+                          )}
+                          {record.platelet_count && (
+                            <Grid item xs={12} sm={6} md={3}>
+                              <Paper elevation={0} sx={{ p: 2, bgcolor: 'white' }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                                  <BloodtypeIcon sx={{ mr: 1, color: 'text.secondary' }} />
+                                  <Typography variant="body2" color="text.secondary">Platelet Count</Typography>
+                                </Box>
+                                <Typography variant="h6">{record.platelet_count.toLocaleString()} per μL</Typography>
+                                <Chip 
+                                  size="small"
+                                  label={getPlateletCategory(record.platelet_count).label}
+                                  sx={{ 
+                                    mt: 1,
+                                    bgcolor: getPlateletCategory(record.platelet_count).color + '20',
+                                    color: getPlateletCategory(record.platelet_count).color
+                                  }}
+                                />
+                              </Paper>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Grid>
+                    )}
                   </Grid>
-
-                  {/* Cholesterol */}
-                  <Grid item xs={12}>
-                    <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Box>
-                            <Typography variant="body2" color="textSecondary">Cholesterol</Typography>
-                            <Typography variant="h6">{record.cholesterol} mg/dL</Typography>
-                          </Box>
-                        </Box>
-                        <Chip 
-                          label={getCholesterolCategory(record.cholesterol, record.date_of_birth).label}
-                          size="small"
-                          sx={{ 
-                            bgcolor: getCholesterolCategory(record.cholesterol, record.date_of_birth).color,
-                            color: 'white'
-                          }}
-                        />
-                      </Box>
-                    </Paper>
-                  </Grid>
-                </Grid>
-              </Paper>
-            </Grid>
+                </Box>
+              </Collapse>
+              <Divider sx={{ my: 1 }} />
+            </React.Fragment>
           ))}
-        </Grid>
+        </List>
       )}
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
@@ -803,6 +1043,44 @@ const Dashboard = () => {
                 type="number"
                 value={newHealthData.cholesterol}
                 onChange={(e) => setNewHealthData({...newHealthData, cholesterol: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Hemoglobin (g/dL)"
+                type="number"
+                inputProps={{ step: "0.1" }}
+                value={newHealthData.hemoglobin}
+                onChange={(e) => setNewHealthData({...newHealthData, hemoglobin: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="RBC Count (million/μL)"
+                type="number"
+                inputProps={{ step: "0.1" }}
+                value={newHealthData.rbc}
+                onChange={(e) => setNewHealthData({...newHealthData, rbc: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="WBC Count (per μL)"
+                type="number"
+                value={newHealthData.wbc}
+                onChange={(e) => setNewHealthData({...newHealthData, wbc: e.target.value})}
+              />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField
+                fullWidth
+                label="Platelet Count (per μL)"
+                type="number"
+                value={newHealthData.platelet_count}
+                onChange={(e) => setNewHealthData({...newHealthData, platelet_count: e.target.value})}
               />
             </Grid>
           </Grid>

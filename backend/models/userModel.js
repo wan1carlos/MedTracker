@@ -46,7 +46,7 @@ export const UserModel = {
         try {
             console.log('Searching for email:', email);
             const [rows] = await pool.execute(
-                'SELECT *, is_admin FROM users WHERE email = ? AND deleted_at IS NULL',
+                'SELECT *, is_admin FROM users WHERE email = ? AND deleted_at IS NULL AND is_active = TRUE',
                 [email]
             );
             console.log('Found rows:', rows);
@@ -116,7 +116,9 @@ export const UserModel = {
     findAll: async () => {
         try {
             const [rows] = await pool.execute(
-                'SELECT id, first_name, middle_name, last_name, email, address, gender, date_of_birth, is_admin FROM users WHERE deleted_at IS NULL ORDER BY first_name'
+                `SELECT id, first_name, middle_name, last_name, email, 
+                 address, gender, date_of_birth, is_admin, is_active 
+                 FROM users WHERE deleted_at IS NULL ORDER BY first_name`
             );
             return rows;
         } catch (error) {
@@ -128,7 +130,7 @@ export const UserModel = {
     delete: async (id) => {
         try {
             const [result] = await pool.execute(
-                'UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?',
+                'UPDATE users SET is_active = FALSE WHERE id = ?',
                 [id]
             );
             return result.affectedRows > 0;

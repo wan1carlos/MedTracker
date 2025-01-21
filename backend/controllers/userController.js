@@ -61,6 +61,13 @@ export const UserController = {
                 return res.status(401).json({ message: 'Invalid credentials' });
             }
 
+            // Add check for active status
+            if (!user.is_active) {
+                return res.status(401).json({ 
+                    message: 'This account has been deactivated. Please contact administrator.' 
+                });
+            }
+
             const token = jwt.sign(
                 { 
                     userId: user.id, 
@@ -194,6 +201,22 @@ export const UserController = {
             console.error('Update password error:', error);
             res.status(500).json({ 
                 message: 'Error updating password', 
+                error: error.message 
+            });
+        }
+    },
+
+    deleteAccount: async (req, res) => {
+        try {
+            const deleted = await UserModel.delete(req.user.userId);
+            if (!deleted) {
+                return res.status(404).json({ message: 'User not found' });
+            }
+            res.json({ message: 'Account deactivated successfully' });
+        } catch (error) {
+            console.error('Error deactivating account:', error);
+            res.status(500).json({ 
+                message: 'Error deactivating account', 
                 error: error.message 
             });
         }

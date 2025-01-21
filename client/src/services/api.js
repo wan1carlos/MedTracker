@@ -157,10 +157,10 @@ export const getUserHealthData = async (userId) => {
 
 export const deleteUser = async (userId) => {
   try {
-    const response = await apiClient.delete(`/admin/users/${userId}`);
+    const response = await apiClient.delete(`/users/delete`);
     return response.data;
   } catch (error) {
-    console.error('Error deleting user:', error);
+    console.error('Error deleting user account:', error);
     throw error.response?.data || error;
   }
 };

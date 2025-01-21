@@ -44,10 +44,10 @@ export const AdminController = {
             if (!deleted) {
                 return res.status(404).json({ message: 'User not found' });
             }
-            res.json({ message: 'User deleted successfully' });
+            res.json({ message: 'User account has been deactivated successfully' });
         } catch (error) {
-            console.error('Error deleting user:', error);
-            res.status(500).json({ message: 'Error deleting user', error: error.message });
+            console.error('Error deactivating user:', error);
+            res.status(500).json({ message: 'Error deactivating user', error: error.message });
         }
     },
 

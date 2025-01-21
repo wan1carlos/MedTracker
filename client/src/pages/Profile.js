@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Container, Typography, Paper, Grid, TextField, Button, 
-  Alert, Snackbar, MenuItem, Box 
+  Alert, Snackbar, MenuItem, Box, Dialog, DialogTitle, DialogContent, DialogActions 
 } from '@mui/material';
-import { getUserProfile, updateUserProfile, updatePassword } from '../services/api';
+import { getUserProfile, updateUserProfile, updatePassword, deleteUser } from '../services/api';
 import { calculateAge } from '../utils/dateUtils';
+import DeleteIcon from '@mui/icons-material/Delete';
+import { useNavigate } from 'react-router-dom';
 
 const Profile = () => {
   const [loading, setLoading] = useState(true);
@@ -32,6 +34,9 @@ const Profile = () => {
     hasMinLength: false,
     matches: false
   });
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const navigate = useNavigate();
+  const [user] = useState(JSON.parse(localStorage.getItem('user')));
 
   useEffect(() => {
     fetchUserProfile();
@@ -119,6 +124,17 @@ const Profile = () => {
 
   const showSnackbar = (message, severity = 'success') => {
     setSnackbar({ open: true, message, severity });
+  };
+
+  const handleDeleteAccount = async () => {
+    try {
+      await deleteUser();
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      navigate('/login');
+    } catch (error) {
+      showSnackbar('Error deactivating account', 'error');
+    }
   };
 
   if (loading) {
@@ -343,6 +359,65 @@ const Profile = () => {
             </form>
           </Paper>
         )}
+      </Box>
+
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="h6" color="error" gutterBottom>
+          Danger Zone
+        </Typography>
+        <Paper sx={{ p: 3, bgcolor: '#fdeded' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box>
+              <Typography variant="subtitle1" sx={{ color: 'error.main', fontWeight: 'medium' }}>
+                Delete Account
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Once you delete your account, there is no going back. Please be certain.
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              color="error"
+              startIcon={<DeleteIcon />}
+              onClick={() => setOpenDeleteDialog(true)}
+            >
+              Delete Account
+            </Button>
+          </Box>
+        </Paper>
+
+        <Dialog
+          open={openDeleteDialog}
+          onClose={() => setOpenDeleteDialog(false)}
+        >
+          <DialogTitle sx={{ color: 'error.main' }}>
+            Delete Account?
+          </DialogTitle>
+          <DialogContent>
+            <Typography>
+              Are you sure you want to delete your account? This action cannot be undone and you will lose access to:
+            </Typography>
+            <Box component="ul" sx={{ mt: 2 }}>
+              <Typography component="li">All your health records</Typography>
+              <Typography component="li">Your profile information</Typography>
+              <Typography component="li">Access to the MedTracker system</Typography>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => setOpenDeleteDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleDeleteAccount}
+              color="error"
+              variant="contained"
+            >
+              Delete Account
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
 
       <Snackbar

@@ -34,6 +34,23 @@ app.use('/api/feedback', feedbackRoutes);
 dbConnection();
 
 const PORT = process.env.PORT || 3100;
-app.listen(PORT, () => {
-    console.log(`API is running on port ${PORT}`);
-});
+
+// Try to start server with error handling
+const startServer = async () => {
+    try {
+        app.listen(PORT, () => {
+            console.log(`API is running on port ${PORT}`);
+        });
+    } catch (error) {
+        if (error.code === 'EADDRINUSE') {
+            console.log(`Port ${PORT} is busy, trying ${PORT + 1}`);
+            app.listen(PORT + 1, () => {
+                console.log(`API is running on port ${PORT + 1}`);
+            });
+        } else {
+            console.error('Failed to start server:', error);
+        }
+    }
+};
+
+startServer();
