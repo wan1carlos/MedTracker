@@ -46,6 +46,11 @@ const Dashboard = () => {
     platelet_count: ''
   });
   const [expandedRecord, setExpandedRecord] = useState(null);
+  const [confirmDialog, setConfirmDialog] = useState({
+    open: false,
+    existingRecord: null,
+    newData: null
+  });
 
   useEffect(() => {
     fetchHealthData();
@@ -73,6 +78,32 @@ const Dashboard = () => {
   };
 
   const handleAddHealthData = async () => {
+    try {
+      // Check if there's a record for today
+      const today = new Date().toISOString().split('T')[0];
+      const existingRecord = healthData.find(record => 
+        new Date(record.created_at).toISOString().split('T')[0] === today
+      );
+
+      if (existingRecord) {
+        // Show confirmation dialog
+        setConfirmDialog({
+          open: true,
+          existingRecord,
+          newData: newHealthData
+        });
+        return;
+      }
+
+      // If no existing record, proceed with adding new record
+      await addRecord();
+    } catch (error) {
+      console.error('Error adding health data:', error);
+      showSnackbar('Error adding health record', 'error');
+    }
+  };
+
+  const addRecord = async () => {
     try {
       await addHealthData(newHealthData);
       setOpenDialog(false);
@@ -651,6 +682,40 @@ const Dashboard = () => {
     }
   };
 
+  const renderConfirmationDialog = () => (
+    <Dialog
+      open={confirmDialog.open}
+      onClose={() => setConfirmDialog({ ...confirmDialog, open: false })}
+    >
+      <DialogTitle>Overwrite Existing Record?</DialogTitle>
+      <DialogContent>
+        <Typography variant="body1" gutterBottom>
+          A health record already exists for today. Do you want to overwrite it?
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          The existing record will be permanently replaced with the new data.
+        </Typography>
+      </DialogContent>
+      <DialogActions>
+        <Button 
+          onClick={() => setConfirmDialog({ ...confirmDialog, open: false })}
+        >
+          Cancel
+        </Button>
+        <Button 
+          onClick={async () => {
+            setConfirmDialog({ ...confirmDialog, open: false });
+            await addRecord();
+          }}
+          color="primary"
+          variant="contained"
+        >
+          Overwrite
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
@@ -1092,6 +1157,8 @@ const Dashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {renderConfirmationDialog()}
 
       <Snackbar 
         open={snackbar.open} 

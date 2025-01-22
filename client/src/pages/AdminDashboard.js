@@ -269,82 +269,152 @@ const AdminDashboard = () => {
 
   const handlePrintRecord = async (record, userDetails) => {
     try {
-      // Fetch fresh user data from the database
-      const userData = await getUserHealthData(userDetails.id);
-      const user = userData.user; // Assuming the API returns user details with health data
-      
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
       
-      // Header
-      doc.setFontSize(20);
-      doc.text("Medical Record", pageWidth/2, 20, { align: 'center' });
-      
-      // Date
-      doc.setFontSize(12);
-      doc.text(`Date: ${new Date(record.created_at).toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      })}`, 20, 35);
+      // Add header with logo and clinic info
+      doc.setFillColor(33, 150, 243); // Primary blue color
+      doc.rect(0, 0, pageWidth, 30, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.text("MedTracker", pageWidth/2, 20, { align: 'center' });
 
-      // Patient Information
-      doc.setFontSize(14);
-      doc.text("Patient Information", 20, 50);
-      doc.setFontSize(12);
+      // Reset text color to black
+      doc.setTextColor(0, 0, 0);
       
-      const dob = user.date_of_birth ? 
-        new Date(user.date_of_birth).toLocaleDateString() : 
-        'Not provided';
-      
-      const age = user.date_of_birth ? calculateAge(user.date_of_birth) : 'N/A';
-      
+      // Add lab info
+      doc.setFontSize(10);
       doc.text([
-        `Name: ${user.first_name} ${user.middle_name ? user.middle_name + ' ' : ''}${user.last_name}`,
-        `Date of Birth: ${dob}`,
-        `Age: ${age} years`,
-        `Gender: ${user.gender || 'Not provided'}`,
-        `Email: ${user.email}`,
-        `Address: ${user.address || 'Not provided'}`
-      ], 20, 60);
+        "123 Medical Center Drive",
+        "Healthcare City, HC 12345",
+        "Tel: (555) 123-4567",
+        "Email: lab@medtracker.com"
+      ], 15, 40);
 
-      // Vital Signs
-      doc.setFontSize(14);
-      doc.text("Vital Signs", 20, 100);
+      // Add report info box
+      doc.setDrawColor(220, 220, 220);
+      doc.setFillColor(245, 245, 245);
+      doc.rect(pageWidth - 80, 35, 65, 30, 'FD');
+      doc.text([
+        "Report ID: " + record.id,
+        "Date: " + new Date(record.created_at).toLocaleDateString(),
+        "Time: " + new Date(record.created_at).toLocaleTimeString()
+      ], pageWidth - 75, 42);
+
+      // Patient Information section
+      doc.setFillColor(240, 240, 240);
+      doc.rect(15, 75, pageWidth - 30, 35, 'F');
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text("Patient Information", 20, 85);
+      doc.setFont(undefined, 'normal');
+      doc.setFontSize(10);
       
-      const vitalSigns = [
-        ['Measurement', 'Value', 'Status'],
-        ['BMI', record.bmi, 
-          getBMICategory(record.bmi, userDetails.date_of_birth).label],
-        ['Blood Pressure', `${record.blood_pressure_systolic}/${record.blood_pressure_diastolic} mmHg`,
-          getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic, userDetails.date_of_birth).label],
-        ['Heart Rate', `${record.heart_rate} bpm`,
-          getHeartRateCategory(record.heart_rate, userDetails.date_of_birth).label],
-        ['Blood Sugar', `${record.blood_sugar} mg/dL`,
-          getBloodSugarCategory(record.blood_sugar, userDetails.date_of_birth).label],
-        ['Cholesterol', `${record.cholesterol} mg/dL`,
-          getCholesterolCategory(record.cholesterol, userDetails.date_of_birth).label],
-        ['Height', `${record.height} cm`, ''],
-        ['Weight', `${record.weight} kg`, '']
+      const patientInfo = [
+        `Name: ${userDetails.first_name} ${userDetails.middle_name || ''} ${userDetails.last_name}`,
+        `Gender: ${userDetails.gender || 'Not specified'}`,
+        `Date of Birth: ${new Date(userDetails.date_of_birth).toLocaleDateString()}`,
+        `Age: ${calculateAge(userDetails.date_of_birth)} years`
       ];
+      doc.text(patientInfo, 20, 95);
+
+      // Test Results
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text("Test Results", 20, 125);
+      doc.setFont(undefined, 'normal');
+
+      // Create test results table
+      const testResults = [
+        ['Test', 'Result', 'Status', 'Reference Range'],
+        ['Basic Measurements', '', '', ''],
+        ['Height', `${record.height} cm`, '-', '-'],
+        ['Weight', `${record.weight} kg`, '-', '-'],
+        ['BMI', record.bmi, 
+          getBMICategory(record.bmi, userDetails.date_of_birth).label,
+          '18.5 - 24.9'],
+        ['Vital Signs', '', '', ''],
+        ['Blood Pressure', `${record.blood_pressure_systolic}/${record.blood_pressure_diastolic} mmHg`,
+          getBloodPressureCategory(record.blood_pressure_systolic, record.blood_pressure_diastolic).label,
+          '< 120/80 mmHg'],
+        ['Heart Rate', `${record.heart_rate} bpm`,
+          getHeartRateCategory(record.heart_rate).label,
+          '60 - 100 bpm'],
+        ['Blood Chemistry', '', '', ''],
+        ['Blood Sugar', `${record.blood_sugar} mg/dL`,
+          getBloodSugarCategory(record.blood_sugar).label,
+          '70 - 100 mg/dL (Fasting)'],
+        ['Cholesterol', `${record.cholesterol} mg/dL`,
+          getCholesterolCategory(record.cholesterol, userDetails.date_of_birth).label,
+          '< 200 mg/dL'],
+        ['Complete Blood Count', '', '', ''],
+        record.hemoglobin ? ['Hemoglobin', `${record.hemoglobin} g/dL`,
+          getHemoglobinCategory(record.hemoglobin, userDetails.gender).label,
+          userDetails.gender === 'Male' ? '13.5 - 17.5 g/dL' : '12.0 - 15.5 g/dL'] : null,
+        record.rbc ? ['RBC Count', `${record.rbc} million/μL`,
+          getRBCCategory(record.rbc, userDetails.gender).label,
+          userDetails.gender === 'Male' ? '4.5 - 5.9 million/μL' : '4.0 - 5.2 million/μL'] : null,
+        record.wbc ? ['WBC Count', `${record.wbc.toLocaleString()} per μL`,
+          getWBCCategory(record.wbc).label,
+          '4,000 - 11,000 per μL'] : null,
+        record.platelet_count ? ['Platelet Count', `${record.platelet_count.toLocaleString()} per μL`,
+          getPlateletCategory(record.platelet_count).label,
+          '150,000 - 450,000 per μL'] : null
+      ].filter(Boolean);
 
       doc.autoTable({
-        startY: 110,
-        head: [vitalSigns[0]],
-        body: vitalSigns.slice(1),
+        startY: 130,
+        head: [testResults[0]],
+        body: testResults.slice(1),
         theme: 'grid',
-        styles: { fontSize: 12, cellPadding: 5 },
-        headStyles: { fillColor: [66, 66, 66] }
+        styles: {
+          fontSize: 9,
+          cellPadding: 4
+        },
+        headStyles: {
+          fillColor: [33, 150, 243],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold'
+        },
+        columnStyles: {
+          0: { cellWidth: 45 },
+          1: { cellWidth: 45 },
+          2: { cellWidth: 35 },
+          3: { cellWidth: 'auto' }
+        },
+        // Style for section headers
+        rowStyles: row => {
+          if (['Basic Measurements', 'Vital Signs', 'Blood Chemistry', 'Complete Blood Count'].includes(testResults[row + 1]?.[0])) {
+            return {
+              fillColor: [240, 240, 240],
+              textColor: [0, 0, 0],
+              fontStyle: 'bold'
+            };
+          }
+        }
       });
 
-      // Footer
-      doc.setFontSize(10);
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, 20, 280);
-      doc.text("MedTracker Health Records System", pageWidth/2, 280, { align: 'center' });
-      doc.text("Page 1 of 1", pageWidth - 20, 280, { align: 'right' });
+      // Add notes and disclaimer
+      const finalY = doc.autoTable.previous.finalY + 20;
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.text("Notes and Interpretation:", 20, finalY);
+      doc.setFont(undefined, 'normal');
+      doc.text([
+        "• Results should be interpreted in conjunction with clinical findings and other laboratory data.",
+        "• Reference ranges may vary by laboratory and patient characteristics.",
+        "• Values marked as abnormal should be reviewed by a healthcare provider."
+      ], 25, finalY + 10);
+
+      // Add footer
+      doc.setFontSize(8);
+      doc.text("Generated by MedTracker Laboratory System", 20, pageHeight - 20);
+      doc.text(`Report generated on: ${new Date().toLocaleString()}`, pageWidth - 20, pageHeight - 20, { align: 'right' });
+      doc.text("Page 1 of 1", pageWidth/2, pageHeight - 20, { align: 'center' });
 
       // Save the PDF
-      doc.save(`medical_record_${userDetails.last_name}_${new Date(record.created_at).toISOString().split('T')[0]}.pdf`);
+      doc.save(`lab_report_${new Date(record.created_at).toISOString().split('T')[0]}.pdf`);
     } catch (error) {
       showSnackbar('Error generating PDF', 'error');
     }

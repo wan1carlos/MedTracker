@@ -23,23 +23,45 @@ export const HealthDataModel = {
             const heightInMeters = height / 100;
             const bmi = (weight / (heightInMeters * heightInMeters)).toFixed(2);
 
-            // Convert and validate blood test values
-            const validatedData = {
-                user_id,
-                height: Number(height),
-                weight: Number(weight),
-                blood_pressure_systolic: Number(blood_pressure_systolic),
-                blood_pressure_diastolic: Number(blood_pressure_diastolic),
-                blood_sugar: Number(blood_sugar),
-                heart_rate: Number(heart_rate),
-                cholesterol: Number(cholesterol),
-                bmi: Number(bmi),
-                hemoglobin: hemoglobin ? Number(Number(hemoglobin).toFixed(1)) : null,
-                rbc: rbc ? Number(Number(rbc).toFixed(1)) : null,
-                wbc: wbc ? Number(wbc) : null,
-                platelet_count: platelet_count ? Number(platelet_count) : null
-            };
+            // Check for existing record today
+            const today = new Date().toISOString().split('T')[0];
+            const [existingRecords] = await pool.execute(
+                `SELECT id FROM health_data 
+                 WHERE user_id = ? 
+                 AND DATE(created_at) = DATE(?)
+                 AND deleted_at IS NULL`,
+                [user_id, today]
+            );
 
+            if (existingRecords.length > 0) {
+                // Update existing record
+                const [result] = await pool.execute(
+                    `UPDATE health_data 
+                     SET height = ?, weight = ?, blood_pressure_systolic = ?,
+                         blood_pressure_diastolic = ?, blood_sugar = ?, heart_rate = ?,
+                         cholesterol = ?, bmi = ?, hemoglobin = ?, rbc = ?, wbc = ?,
+                         platelet_count = ?, updated_at = CURRENT_TIMESTAMP
+                     WHERE id = ?`,
+                    [
+                        Number(height),
+                        Number(weight),
+                        Number(blood_pressure_systolic),
+                        Number(blood_pressure_diastolic),
+                        Number(blood_sugar),
+                        Number(heart_rate),
+                        Number(cholesterol),
+                        Number(bmi),
+                        hemoglobin ? Number(hemoglobin) : null,
+                        rbc ? Number(rbc) : null,
+                        wbc ? Number(wbc) : null,
+                        platelet_count ? Number(platelet_count) : null,
+                        existingRecords[0].id
+                    ]
+                );
+                return result;
+            }
+
+            // If no existing record, insert new one
             const [result] = await pool.execute(
                 `INSERT INTO health_data (
                     user_id, height, weight, blood_pressure_systolic,
@@ -47,19 +69,19 @@ export const HealthDataModel = {
                     cholesterol, bmi, hemoglobin, rbc, wbc, platelet_count
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    validatedData.user_id,
-                    validatedData.height,
-                    validatedData.weight,
-                    validatedData.blood_pressure_systolic,
-                    validatedData.blood_pressure_diastolic,
-                    validatedData.blood_sugar,
-                    validatedData.heart_rate,
-                    validatedData.cholesterol,
-                    validatedData.bmi,
-                    validatedData.hemoglobin,
-                    validatedData.rbc,
-                    validatedData.wbc,
-                    validatedData.platelet_count
+                    user_id,
+                    Number(height),
+                    Number(weight),
+                    Number(blood_pressure_systolic),
+                    Number(blood_pressure_diastolic),
+                    Number(blood_sugar),
+                    Number(heart_rate),
+                    Number(cholesterol),
+                    Number(bmi),
+                    hemoglobin ? Number(hemoglobin) : null,
+                    rbc ? Number(rbc) : null,
+                    wbc ? Number(wbc) : null,
+                    platelet_count ? Number(platelet_count) : null
                 ]
             );
 
